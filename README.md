@@ -25,6 +25,8 @@ Central dashboard and control plane for managing a team of AI agents as a virtua
 - Immutable spend logging
 - Basic CRUD routers for companies, agents, tasks, budgets
 - Configurable Human-in-the-Loop (per task / stage)
+- Alembic migrations (first migration: initial_schema_phase1)
+- Requirements split (base / phase2)
 
 ## Quick Start (Phase 1)
 
@@ -32,13 +34,31 @@ Central dashboard and control plane for managing a team of AI agents as a virtua
 cd backend
 python -m venv .venv
 source .venv/bin/activate   # or .venv\Scripts\activate on Windows
+
+# Phase 1 only
+pip install -r requirements-base.txt
+
+# or full (Phase 1 + Phase 2 deps)
 pip install -r requirements.txt
+
+# Apply migrations
+alembic upgrade head
 
 # Run API
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
 ```
 
 Open http://localhost:8000/docs for interactive API docs.
+
+### Requirements split
+- `requirements-base.txt` — Phase 1 (FastAPI, SQLAlchemy, Alembic, auth helpers)
+- `requirements-phase2.txt` — Phase 2 (provider SDKs: anthropic, openai, tiktoken, tenacity)
+- `requirements.txt` — convenience full install
+
+### Alembic
+- Environment: `alembic/`
+- First migration: `alembic/versions/8d5da4fc0b82_initial_schema_phase1.py`
+- Commands: `alembic revision --autogenerate -m "msg"` / `alembic upgrade head`
 
 ## Key Design Decisions (Board-approved)
 

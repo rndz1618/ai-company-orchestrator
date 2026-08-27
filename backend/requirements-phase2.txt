@@ -1,0 +1,9 @@
+# Phase 2 – Workflow engine + provider adapters
+# Install after requirements-base.txt
+-r requirements-base.txt
+
+tenacity==9.0.0
+tiktoken==0.7.0
+anthropic==0.34.2
+openai==1.51.0
+# Future: openclaw / local LLM adapters will go here

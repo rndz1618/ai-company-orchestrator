@@ -37,7 +37,7 @@ def get_company(company_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{company_id}", response_model=CompanyOut)
 def update_company(company_id: int, payload: CompanyUpdate, db: Session = Depends(get_db)):
-    company = db.query(Company).filter(Company.id == company_id).first()
+    company = db.query(Company).filter(Company.id == company_id, Company.is_active == True).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 

@@ -4,7 +4,7 @@ from typing import List
 from datetime import datetime, timezone
 
 from app.database import get_db
-from app.models import Task, Agent, TaskStatus
+from app.models import Task, Agent, Company, TaskStatus
 from app.schemas import TaskCreate, TaskUpdate, TaskOut, TaskApprove
 
 router = APIRouter()
@@ -12,6 +12,10 @@ router = APIRouter()
 
 @router.post("/", response_model=TaskOut, status_code=201)
 def create_task(payload: TaskCreate, db: Session = Depends(get_db)):
+    company = db.query(Company).filter(Company.id == payload.company_id, Company.is_active == True).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+
     if payload.agent_id:
         agent = db.query(Agent).filter(Agent.id == payload.agent_id).first()
         if not agent:
@@ -58,7 +62,7 @@ def list_tasks(
 
 @router.get("/{task_id}", response_model=TaskOut)
 def get_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     return task
@@ -66,7 +70,7 @@ def get_task(task_id: int, db: Session = Depends(get_db)):
 
 @router.patch("/{task_id}", response_model=TaskOut)
 def update_task(task_id: int, payload: TaskUpdate, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -82,7 +86,7 @@ def update_task(task_id: int, payload: TaskUpdate, db: Session = Depends(get_db)
 @router.post("/{task_id}/approve", response_model=TaskOut)
 def approve_task(task_id: int, payload: TaskApprove, db: Session = Depends(get_db)):
     """Human-in-the-Loop approval endpoint. Only works if task is WAITING_APPROVAL."""
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
 
@@ -104,7 +108,7 @@ def approve_task(task_id: int, payload: TaskApprove, db: Session = Depends(get_d
 
 @router.post("/{task_id}/cancel", response_model=TaskOut)
 def cancel_task(task_id: int, db: Session = Depends(get_db)):
-    task = db.query(Task).filter(Task.id == task_id).first()
+    task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
     if not task:
         raise HTTPException(status_code=404, detail="Task not found")
     if task.status in (TaskStatus.COMPLETED, TaskStatus.CANCELLED):

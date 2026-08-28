@@ -62,7 +62,10 @@ def update_agent(agent_id: int, payload: AgentUpdate, db: Session = Depends(get_
 
     data = payload.model_dump(exclude_unset=True)
     if "monthly_budget" in data:
-        agent = set_agent_budget(agent, data.pop("monthly_budget"), db)
+        try:
+            agent = set_agent_budget(agent, data.pop("monthly_budget"), db)
+        except ValueError as e:
+            raise HTTPException(status_code=400, detail=str(e))
 
     for key, value in data.items():
         setattr(agent, key, value)

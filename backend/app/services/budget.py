@@ -3,18 +3,18 @@ Budget enforcement service.
 
 Hard rules:
 - Every spend must be checked BEFORE the API call.
-- If remaining budget < estimated_cost → raise BudgetExceededError and pause agent.
+- If remaining budget < estimated_cost → raise BudgetExceededError and set PAUSED_BUDGET.
 - Monthly reset is automatic on first access of a new calendar month.
-- Company-level budget is also enforced (optional soft/hard).
+- Only PAUSED_BUDGET is auto-unpaused on month reset (PAUSED_MANUAL stays paused).
+- Company-level budget is also enforced.
+- record_spend / check_budget do NOT commit — caller owns the transaction.
 """
 
-from datetime import date, datetime
+from datetime import date
 from typing import Optional, Tuple
 from sqlalchemy.orm import Session
-from fastapi import HTTPException
 
 from app.models import Agent, Company, SpendLog, AgentStatus
-from app.core.config import settings
 
 
 class BudgetExceededError(Exception):
@@ -31,13 +31,14 @@ def _current_budget_month() -> date:
 
 
 def _reset_if_new_month(agent: Agent, db: Session) -> None:
-    """Reset spend counters if we crossed into a new calendar month."""
+    """Reset spend counters if we crossed into a new calendar month.
+    Only auto-unpause agents that were paused purely for budget reasons.
+    """
     current = _current_budget_month()
     if agent.budget_month < current:
         agent.current_month_spend = 0.0
         agent.budget_month = current
-        if agent.status == AgentStatus.PAUSED:
-            # Only auto-unpause if it was paused purely for budget
+        if agent.status == AgentStatus.PAUSED_BUDGET:
             agent.status = AgentStatus.ACTIVE
         db.add(agent)
 
@@ -70,6 +71,7 @@ def check_budget(
     Pre-flight check.
     Returns (allowed: bool, remaining_after: float)
     Raises BudgetExceededError if not allowed.
+    Does NOT commit — caller must commit if desired.
     """
     if agent.status == AgentStatus.DISABLED:
         raise BudgetExceededError(
@@ -79,16 +81,22 @@ def check_budget(
             required=estimated_cost,
         )
 
+    if agent.status == AgentStatus.PAUSED_MANUAL:
+        raise BudgetExceededError(
+            f"Agent {agent.id} ({agent.name}) is manually paused by Board",
+            agent_id=agent.id,
+            remaining=get_agent_remaining_budget(agent, db),
+            required=estimated_cost,
+        )
+
     remaining = get_agent_remaining_budget(agent, db)
 
     if estimated_cost > remaining:
-        # Auto-pause the agent
-        agent.status = AgentStatus.PAUSED
+        agent.status = AgentStatus.PAUSED_BUDGET
         db.add(agent)
-        db.commit()
         raise BudgetExceededError(
             f"Agent '{agent.name}' monthly budget exceeded. "
-            f"Remaining: ${remaining:.4f}, required: ${estimated_cost:.4f}. Agent paused.",
+            f"Remaining: ${remaining:.4f}, required: ${estimated_cost:.4f}. Agent paused (budget).",
             agent_id=agent.id,
             remaining=remaining,
             required=estimated_cost,
@@ -123,7 +131,7 @@ def record_spend(
 ) -> SpendLog:
     """
     Record an actual spend after a successful API call.
-    Always call this after the provider responds, never before.
+    Does NOT commit — caller owns the transaction.
     """
     _reset_if_new_month(agent, db)
     _reset_company_if_new_month(agent.company, db)
@@ -131,9 +139,8 @@ def record_spend(
     agent.current_month_spend += cost_usd
     agent.company.current_month_spend += cost_usd
 
-    # Safety: if somehow over, pause
     if agent.current_month_spend >= agent.monthly_budget:
-        agent.status = AgentStatus.PAUSED
+        agent.status = AgentStatus.PAUSED_BUDGET
 
     log = SpendLog(
         agent_id=agent.id,
@@ -149,8 +156,6 @@ def record_spend(
     db.add(log)
     db.add(agent)
     db.add(agent.company)
-    db.commit()
-    db.refresh(log)
     return log
 
 
@@ -160,32 +165,22 @@ def estimate_cost(
     tokens_input: int,
     tokens_output: int = 0,
 ) -> float:
-    """
-    Rough cost estimator (USD).
-    Prices are approximate and should be updated periodically.
-    Used only for pre-flight checks; actual cost comes from provider usage.
-    """
-    # Approximate pricing per 1M tokens (input / output)
-    # Source: public pricing as of mid-2025 / early 2026 – keep updated
+    """Rough cost estimator (USD) for pre-flight checks."""
     pricing = {
-        # Anthropic
         "claude-3-5-sonnet-20241022": (3.00, 15.00),
         "claude-3-5-sonnet-latest": (3.00, 15.00),
         "claude-3-opus-20240229": (15.00, 75.00),
         "claude-3-haiku-20240307": (0.25, 1.25),
         "claude-sonnet-4-20250514": (3.00, 15.00),
-        # OpenAI
         "gpt-4o": (2.50, 10.00),
         "gpt-4o-mini": (0.15, 0.60),
         "gpt-4.1": (2.00, 8.00),
         "o3": (10.00, 40.00),
-        # Fallbacks
         "default": (3.00, 15.00),
     }
 
     input_price, output_price = pricing.get(model, pricing["default"])
     cost = (tokens_input / 1_000_000) * input_price + (tokens_output / 1_000_000) * output_price
-    # Add a small safety margin for pre-flight
     return round(cost * 1.05, 6)
 
 
@@ -193,12 +188,9 @@ def set_agent_budget(agent: Agent, new_budget: float, db: Session) -> Agent:
     if new_budget < 0:
         raise ValueError("Budget cannot be negative")
     agent.monthly_budget = new_budget
-    # If previously paused due to budget and now has room, unpause
-    if agent.status == AgentStatus.PAUSED and get_agent_remaining_budget(agent, db) > 0:
+    if agent.status == AgentStatus.PAUSED_BUDGET and get_agent_remaining_budget(agent, db) > 0:
         agent.status = AgentStatus.ACTIVE
     db.add(agent)
-    db.commit()
-    db.refresh(agent)
     return agent
 
 
@@ -212,5 +204,7 @@ def get_budget_summary(agent: Agent, db: Session) -> dict:
         "remaining": remaining,
         "budget_month": agent.budget_month.isoformat(),
         "status": agent.status.value,
-        "utilization_pct": round((agent.current_month_spend / agent.monthly_budget) * 100, 2) if agent.monthly_budget > 0 else 0,
+        "utilization_pct": round(
+            (agent.current_month_spend / agent.monthly_budget) * 100, 2
+        ) if agent.monthly_budget > 0 else 0,
     }

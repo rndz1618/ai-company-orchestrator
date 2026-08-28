@@ -24,12 +24,12 @@ def create_company(payload: CompanyCreate, db: Session = Depends(get_db)):
 
 @router.get("/", response_model=List[CompanyOut])
 def list_companies(db: Session = Depends(get_db)):
-    return db.query(Company).all()
+    return db.query(Company).filter(Company.is_active == True).all()
 
 
 @router.get("/{company_id}", response_model=CompanyOut)
 def get_company(company_id: int, db: Session = Depends(get_db)):
-    company = db.query(Company).filter(Company.id == company_id).first()
+    company = db.query(Company).filter(Company.id == company_id, Company.is_active == True).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
     return company
@@ -53,3 +53,13 @@ def update_company(company_id: int, payload: CompanyUpdate, db: Session = Depend
     db.commit()
     db.refresh(company)
     return company
+
+
+@router.delete("/{company_id}", status_code=204)
+def soft_delete_company(company_id: int, db: Session = Depends(get_db)):
+    company = db.query(Company).filter(Company.id == company_id).first()
+    if not company:
+        raise HTTPException(status_code=404, detail="Company not found")
+    company.is_active = False
+    db.commit()
+    return None

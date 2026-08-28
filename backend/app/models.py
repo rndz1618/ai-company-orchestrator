@@ -1,23 +1,29 @@
-from datetime import datetime, date
+from datetime import datetime, date, timezone
 from typing import Optional, List
 from sqlalchemy import (
     String, Text, Float, Integer, Boolean, DateTime, Date, ForeignKey,
-    Enum as SQLEnum, JSON, UniqueConstraint, Index
+    Enum as SQLEnum, JSON, Index
 )
 from sqlalchemy.orm import Mapped, mapped_column, relationship
 from enum import Enum
 from app.database import Base
 
 
+def utcnow() -> datetime:
+    """Timezone-aware UTC now (Python 3.12+ safe)."""
+    return datetime.now(timezone.utc)
+
+
 class AgentStatus(str, Enum):
     ACTIVE = "active"
-    PAUSED = "paused"          # budget exhausted or manually paused
+    PAUSED_BUDGET = "paused_budget"   # auto-paused because budget exhausted
+    PAUSED_MANUAL = "paused_manual"   # Board intentionally paused the agent
     DISABLED = "disabled"
 
 
 class TaskStatus(str, Enum):
     PENDING = "pending"
-    READY = "ready"            # dependencies met, waiting to start
+    READY = "ready"
     RUNNING = "running"
     WAITING_APPROVAL = "waiting_approval"
     COMPLETED = "completed"
@@ -41,9 +47,10 @@ class Company(Base):
     mission: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     monthly_budget: Mapped[float] = mapped_column(Float, default=500.0)
     current_month_spend: Mapped[float] = mapped_column(Float, default=0.0)
-    budget_month: Mapped[date] = mapped_column(Date, default=date.today().replace(day=1))
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    budget_month: Mapped[date] = mapped_column(Date, default=lambda: date.today().replace(day=1))
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     agents: Mapped[List["Agent"]] = relationship("Agent", back_populates="company", cascade="all, delete-orphan")
     workflows: Mapped[List["WorkflowTemplate"]] = relationship("WorkflowTemplate", back_populates="company", cascade="all, delete-orphan")
@@ -57,23 +64,24 @@ class Agent(Base):
     company_id: Mapped[int] = mapped_column(ForeignKey("companies.id"), nullable=False)
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
-    role: Mapped[str] = mapped_column(String(100), nullable=False)  # CEO, CTO, Researcher, etc.
+    role: Mapped[str] = mapped_column(String(100), nullable=False)
     system_prompt: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
     provider: Mapped[ProviderType] = mapped_column(SQLEnum(ProviderType), default=ProviderType.ANTHROPIC)
     model: Mapped[str] = mapped_column(String(100), default="claude-3-5-sonnet-20241022")
-    api_key_env: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)  # env var name, never store raw key
+    api_key_env: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
 
     monthly_budget: Mapped[float] = mapped_column(Float, default=50.0)
     current_month_spend: Mapped[float] = mapped_column(Float, default=0.0)
-    budget_month: Mapped[date] = mapped_column(Date, default=date.today().replace(day=1))
+    budget_month: Mapped[date] = mapped_column(Date, default=lambda: date.today().replace(day=1))
 
     status: Mapped[AgentStatus] = mapped_column(SQLEnum(AgentStatus), default=AgentStatus.ACTIVE)
-    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("agents.id"), nullable=True)  # for org chart
+    parent_id: Mapped[Optional[int]] = mapped_column(ForeignKey("agents.id"), nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     company: Mapped["Company"] = relationship("Company", back_populates="agents")
     parent: Mapped[Optional["Agent"]] = relationship("Agent", remote_side=[id], backref="children")
@@ -93,11 +101,11 @@ class WorkflowTemplate(Base):
 
     name: Mapped[str] = mapped_column(String(255), nullable=False)
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
-    # Ordered list of stages: [{"name": "...", "role": "...", "requires_human_approval": false}, ...]
     stages: Mapped[dict] = mapped_column(JSON, nullable=False, default=list)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     company: Mapped["Company"] = relationship("Company", back_populates="workflows")
 
@@ -113,18 +121,15 @@ class Task(Base):
     description: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     status: Mapped[TaskStatus] = mapped_column(SQLEnum(TaskStatus), default=TaskStatus.PENDING)
 
-    # Dependency: this task cannot start until depends_on_id is COMPLETED
     depends_on_id: Mapped[Optional[int]] = mapped_column(ForeignKey("tasks.id"), nullable=True)
 
     requires_human_approval: Mapped[bool] = mapped_column(Boolean, default=False)
     approved_by: Mapped[Optional[str]] = mapped_column(String(255), nullable=True)
-    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
+    approved_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
 
-    # Result / output from the agent
     result: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
     error_message: Mapped[Optional[str]] = mapped_column(Text, nullable=True)
 
-    # Cost tracking for this specific task
     estimated_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     actual_cost: Mapped[Optional[float]] = mapped_column(Float, nullable=True)
     tokens_input: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
@@ -132,11 +137,12 @@ class Task(Base):
 
     workflow_template_id: Mapped[Optional[int]] = mapped_column(ForeignKey("workflow_templates.id"), nullable=True)
     stage_index: Mapped[Optional[int]] = mapped_column(Integer, nullable=True)
+    is_active: Mapped[bool] = mapped_column(Boolean, default=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
-    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime, nullable=True)
-    updated_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
+    started_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    completed_at: Mapped[Optional[datetime]] = mapped_column(DateTime(timezone=True), nullable=True)
+    updated_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow, onupdate=utcnow)
 
     company: Mapped["Company"] = relationship("Company", back_populates="tasks")
     agent: Mapped[Optional["Agent"]] = relationship("Agent", back_populates="tasks")
@@ -162,11 +168,10 @@ class SpendLog(Base):
     tokens_output: Mapped[int] = mapped_column(Integer, default=0)
     cost_usd: Mapped[float] = mapped_column(Float, nullable=False)
 
-    # Optional metadata
     request_id: Mapped[Optional[str]] = mapped_column(String(100), nullable=True)
     meta: Mapped[Optional[dict]] = mapped_column(JSON, nullable=True)
 
-    created_at: Mapped[datetime] = mapped_column(DateTime, default=datetime.utcnow)
+    created_at: Mapped[datetime] = mapped_column(DateTime(timezone=True), default=utcnow)
 
     agent: Mapped["Agent"] = relationship("Agent", back_populates="spend_logs")
 

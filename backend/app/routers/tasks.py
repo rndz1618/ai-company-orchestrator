@@ -1,7 +1,7 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
-from datetime import datetime
+from datetime import datetime, timezone
 
 from app.database import get_db
 from app.models import Task, Agent, TaskStatus
@@ -46,7 +46,7 @@ def list_tasks(
     status: TaskStatus | None = None,
     db: Session = Depends(get_db),
 ):
-    q = db.query(Task)
+    q = db.query(Task).filter(Task.is_active == True)
     if company_id:
         q = q.filter(Task.company_id == company_id)
     if agent_id:
@@ -93,9 +93,9 @@ def approve_task(task_id: int, payload: TaskApprove, db: Session = Depends(get_d
         )
 
     task.approved_by = payload.approved_by
-    task.approved_at = datetime.utcnow()
+    task.approved_at = datetime.now(timezone.utc)
     task.status = TaskStatus.COMPLETED
-    task.completed_at = datetime.utcnow()
+    task.completed_at = datetime.now(timezone.utc)
 
     db.commit()
     db.refresh(task)
@@ -113,3 +113,13 @@ def cancel_task(task_id: int, db: Session = Depends(get_db)):
     db.commit()
     db.refresh(task)
     return task
+
+
+@router.delete("/{task_id}", status_code=204)
+def soft_delete_task(task_id: int, db: Session = Depends(get_db)):
+    task = db.query(Task).filter(Task.id == task_id).first()
+    if not task:
+        raise HTTPException(status_code=404, detail="Task not found")
+    task.is_active = False
+    db.commit()
+    return None

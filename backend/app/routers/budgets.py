@@ -12,7 +12,7 @@ router = APIRouter()
 
 @router.get("/agents/{agent_id}", response_model=BudgetSummary)
 def agent_budget_summary(agent_id: int, db: Session = Depends(get_db)):
-    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.is_active == True).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     return get_budget_summary(agent, db)
@@ -20,12 +20,12 @@ def agent_budget_summary(agent_id: int, db: Session = Depends(get_db)):
 
 @router.get("/company/{company_id}")
 def company_budget_summary(company_id: int, db: Session = Depends(get_db)):
-    company = db.query(Company).filter(Company.id == company_id).first()
+    company = db.query(Company).filter(Company.id == company_id, Company.is_active == True).first()
     if not company:
         raise HTTPException(status_code=404, detail="Company not found")
 
     remaining = get_company_remaining_budget(company, db)
-    agents = db.query(Agent).filter(Agent.company_id == company_id).all()
+    agents = db.query(Agent).filter(Agent.company_id == company_id, Agent.is_active == True).all()
     agent_summaries = [get_budget_summary(a, db) for a in agents]
 
     return {
@@ -44,7 +44,7 @@ def company_budget_summary(company_id: int, db: Session = Depends(get_db)):
 
 @router.get("/agents/{agent_id}/logs", response_model=List[SpendLogOut])
 def agent_spend_logs(agent_id: int, limit: int = 50, db: Session = Depends(get_db)):
-    agent = db.query(Agent).filter(Agent.id == agent_id).first()
+    agent = db.query(Agent).filter(Agent.id == agent_id, Agent.is_active == True).first()
     if not agent:
         raise HTTPException(status_code=404, detail="Agent not found")
     logs = (

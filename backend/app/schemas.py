@@ -6,7 +6,8 @@ from enum import Enum
 
 class AgentStatusEnum(str, Enum):
     ACTIVE = "active"
-    PAUSED = "paused"
+    PAUSED_BUDGET = "paused_budget"
+    PAUSED_MANUAL = "paused_manual"
     DISABLED = "disabled"
 
 

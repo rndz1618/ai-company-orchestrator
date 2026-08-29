@@ -24,24 +24,32 @@ def upgrade() -> None:
     op.add_column('workflow_templates', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.true()))
     op.add_column('tasks', sa.Column('is_active', sa.Boolean(), nullable=False, server_default=sa.true()))
 
-    # --- AgentStatus enum expansion ---
-    # SQLite does not support ALTER TYPE. Application-level enum values are sufficient.
-    # For PostgreSQL, recreate the enum properly.
+    # --- AgentStatus enum expansion (PostgreSQL only) ---
+    # Python model uses lowercase values: active, paused_budget, paused_manual, disabled.
+    # Initial migration used UPPERCASE names; align to lowercase .value from the str Enum.
     bind = op.get_bind()
     if bind.dialect.name == 'postgresql':
         op.execute("ALTER TYPE agentstatus RENAME TO agentstatus_old")
-        op.execute("CREATE TYPE agentstatus AS ENUM ('ACTIVE', 'PAUSED_BUDGET', 'PAUSED_MANUAL', 'DISABLED')")
+        op.execute(
+            "CREATE TYPE agentstatus AS ENUM "
+            "('active', 'paused_budget', 'paused_manual', 'disabled')"
+        )
         op.execute("""
             ALTER TABLE agents
             ALTER COLUMN status TYPE agentstatus
             USING (
-                CASE status::text
-                    WHEN 'PAUSED' THEN 'PAUSED_BUDGET'::agentstatus
-                    ELSE status::text::agentstatus
+                CASE lower(status::text)
+                    WHEN 'paused' THEN 'paused_budget'::agentstatus
+                    WHEN 'active' THEN 'active'::agentstatus
+                    WHEN 'disabled' THEN 'disabled'::agentstatus
+                    WHEN 'paused_budget' THEN 'paused_budget'::agentstatus
+                    WHEN 'paused_manual' THEN 'paused_manual'::agentstatus
+                    ELSE 'active'::agentstatus
                 END
             )
         """)
         op.execute("DROP TYPE agentstatus_old")
+    # SQLite: native enum not enforced; application-level values only
 
 
 def downgrade() -> None:
@@ -53,10 +61,12 @@ def downgrade() -> None:
             ALTER TABLE agents
             ALTER COLUMN status TYPE agentstatus
             USING (
-                CASE status::text
-                    WHEN 'PAUSED_BUDGET' THEN 'PAUSED'::agentstatus
-                    WHEN 'PAUSED_MANUAL' THEN 'PAUSED'::agentstatus
-                    ELSE status::text::agentstatus
+                CASE lower(status::text)
+                    WHEN 'paused_budget' THEN 'PAUSED'::agentstatus
+                    WHEN 'paused_manual' THEN 'PAUSED'::agentstatus
+                    WHEN 'active' THEN 'ACTIVE'::agentstatus
+                    WHEN 'disabled' THEN 'DISABLED'::agentstatus
+                    ELSE 'ACTIVE'::agentstatus
                 END
             )
         """)

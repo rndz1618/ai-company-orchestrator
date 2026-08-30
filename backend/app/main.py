@@ -5,6 +5,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.core.config import settings
+from app.core.auth import APIKeyMiddleware
 from app.routers import companies, agents, tasks, budgets, workflows, execution
 from app.services.budget import BudgetExceededError
 
@@ -34,6 +35,8 @@ if _origins:
     allow_origins = [o.strip() for o in _origins.split(",") if o.strip()]
 else:
     allow_origins = ["*"]
+
+app.add_middleware(APIKeyMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -79,5 +82,5 @@ def root():
     return {
         "message": "AI Company Orchestrator API",
         "docs": "/docs",
-        "phase": "2 – workflow engine + Claude adapter",
+        "phase": "2.1 – engine + retries + API-key auth",
     }

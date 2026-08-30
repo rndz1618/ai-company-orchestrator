@@ -3,9 +3,10 @@ Workflow execution engine.
 
 Rules (Board-approved):
 - Sequential always: a task may only run when depends_on is COMPLETED (or None).
-- HITL: if requires_human_approval → move to WAITING_APPROVAL after agent finishes; do not auto-complete.
+- HITL: if requires_human_approval → move to WAITING_APPROVAL after agent finishes.
 - Budget: pre-flight check before every provider call; record_spend after success.
 - Soft-deleted / paused agents cannot run.
+- Soft-deleted dependency blocks the chain with a clear error.
 """
 
 from __future__ import annotations
@@ -38,8 +39,10 @@ class TaskNotRunnable(WorkflowEngineError):
 def _dependency_satisfied(task: Task, db: Session) -> bool:
     if task.depends_on_id is None:
         return True
-    dep = db.query(Task).filter(Task.id == task.depends_on_id, Task.is_active == True).first()
+    dep = db.query(Task).filter(Task.id == task.depends_on_id).first()
     if not dep:
+        return False
+    if not dep.is_active:
         return False
     return dep.status == TaskStatus.COMPLETED
 
@@ -55,6 +58,9 @@ def can_run_task(task: Task, db: Session) -> tuple[bool, str]:
     if task.status == TaskStatus.FAILED:
         pass
     if not _dependency_satisfied(task, db):
+        dep = db.query(Task).filter(Task.id == task.depends_on_id).first()
+        if dep and not dep.is_active:
+            return False, f"Dependency task {task.depends_on_id} was soft-deleted"
         return False, f"Dependency task {task.depends_on_id} not completed"
     if not task.agent_id:
         return False, "No agent assigned"
@@ -73,9 +79,7 @@ def can_run_task(task: Task, db: Session) -> tuple[bool, str]:
 def build_prompt(task: Task, agent: Agent) -> tuple[str, str]:
     """Return (system, user) messages for the provider."""
     system = agent.system_prompt or f"You are {agent.name}, role: {agent.role}."
-    user_parts = [
-        f"# Task: {task.title}",
-    ]
+    user_parts = [f"# Task: {task.title}"]
     if task.description:
         user_parts.append(task.description)
     if task.depends_on_id and task.depends_on and task.depends_on.result:
@@ -91,10 +95,7 @@ def build_prompt(task: Task, agent: Agent) -> tuple[str, str]:
 def run_task(task_id: int, db: Session, *, force: bool = False) -> Task:
     """
     Execute a single task via its assigned agent.
-    - Pre-flight budget check
-    - Provider call
-    - record_spend
-    - State transition: COMPLETED or WAITING_APPROVAL
+    Pre-flight budget → provider call → record_spend → COMPLETED or WAITING_APPROVAL.
     """
     task = db.query(Task).filter(Task.id == task_id, Task.is_active == True).first()
     if not task:
@@ -107,9 +108,6 @@ def run_task(task_id: int, db: Session, *, force: bool = False) -> Task:
     agent = db.query(Agent).filter(Agent.id == task.agent_id).first()
     if not agent:
         raise TaskNotRunnable("Agent missing")
-
-    if task.depends_on_id:
-        _ = task.depends_on
 
     system, user = build_prompt(task, agent)
 
@@ -192,9 +190,8 @@ def start_workflow(
     title_prefix: Optional[str] = None,
 ) -> List[Task]:
     """
-    Materialize a WorkflowTemplate into a chain of Tasks (sequential depends_on).
-    Assigns agents by matching stage.role → Agent.role within the company.
-    Does NOT auto-run; returns the created tasks.
+    Materialize WorkflowTemplate into sequential Tasks.
+    Requires an active agent matching each stage.role — fails fast if missing.
     """
     wf = (
         db.query(WorkflowTemplate)
@@ -242,6 +239,13 @@ def start_workflow(
                 )
                 .first()
             )
+            if not agent:
+                raise WorkflowEngineError(
+                    f"Stage {idx} ('{name}'): no active agent with role='{role}' "
+                    f"in company {company_id}. Hire/create agent first."
+                )
+        else:
+            logger.warning("Stage %s ('%s') has no role – task will have no agent", idx, name)
 
         title = f"{title_prefix + ' — ' if title_prefix else ''}{name}"
         task = Task(
@@ -267,10 +271,7 @@ def start_workflow(
 
 
 def advance_ready_tasks(company_id: int, db: Session) -> List[Task]:
-    """
-    Find READY tasks whose dependency is satisfied and run the next one.
-    Strict sequential: only one step per call.
-    """
+    """Run the next READY task for this company (one sequential step)."""
     candidates = (
         db.query(Task)
         .filter(

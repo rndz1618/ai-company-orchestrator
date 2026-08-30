@@ -5,7 +5,7 @@ from contextlib import asynccontextmanager
 import logging
 
 from app.core.config import settings
-from app.routers import companies, agents, tasks, budgets, workflows
+from app.routers import companies, agents, tasks, budgets, workflows, execution
 from app.services.budget import BudgetExceededError
 
 logger = logging.getLogger(__name__)
@@ -48,6 +48,7 @@ app.include_router(agents.router, prefix="/api/agents", tags=["agents"])
 app.include_router(tasks.router, prefix="/api/tasks", tags=["tasks"])
 app.include_router(budgets.router, prefix="/api/budgets", tags=["budgets"])
 app.include_router(workflows.router, prefix="/api/workflows", tags=["workflows"])
+app.include_router(execution.router, prefix="/api/execution", tags=["execution"])
 
 
 @app.exception_handler(BudgetExceededError)
@@ -78,5 +79,5 @@ def root():
     return {
         "message": "AI Company Orchestrator API",
         "docs": "/docs",
-        "phase": "1.5 – polish (Alembic-only, budget 409, workflow router)",
+        "phase": "2 – workflow engine + Claude adapter",
     }

@@ -6,6 +6,7 @@ import {
   ListTodo,
   Wallet,
   Network,
+  GitBranch,
   Menu,
   X,
   KeyRound,
@@ -17,6 +18,7 @@ const nav = [
   { to: '/companies', label: 'Companies', icon: Building2 },
   { to: '/agents', label: 'Agents', icon: Bot },
   { to: '/org', label: 'Org', icon: Network },
+  { to: '/workflows', label: 'Flows', icon: GitBranch },
   { to: '/tasks', label: 'Tasks', icon: ListTodo },
   { to: '/budgets', label: 'Budgets', icon: Wallet },
 ]
@@ -166,7 +168,7 @@ export default function Layout() {
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2 px-1 min-w-[48px] min-h-[52px] text-[10px] ${
+                `flex flex-col items-center gap-0.5 py-2 px-1 min-w-[44px] min-h-[52px] text-[9px] ${
                   isActive ? 'text-accent' : 'text-muted'
                 }`
               }

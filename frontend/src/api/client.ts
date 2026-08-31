@@ -107,18 +107,35 @@ export const api = {
       request<import('../types').Task[]>(
         companyId ? `/api/tasks/?company_id=${companyId}` : '/api/tasks/'
       ),
-  },
-  budgets: {
-    companySummary: (id: number) =>
-      request<{ monthly_budget: number; current_month_spend: number; remaining: number }>(
-        `/api/budgets/company/${id}`
-      ),
+    get: (id: number) => request<import('../types').Task>(`/api/tasks/${id}`),
+    approve: (id: number, approved_by = 'board') =>
+      request<import('../types').Task>(`/api/tasks/${id}/approve`, {
+        method: 'POST',
+        body: JSON.stringify({ approved_by }),
+      }),
+    cancel: (id: number) =>
+      request<import('../types').Task>(`/api/tasks/${id}/cancel`, { method: 'POST' }),
   },
   execution: {
     advance: (companyId: number) =>
       request<import('../types').Task[]>(`/api/execution/companies/${companyId}/advance`, {
         method: 'POST',
       }),
+    runTask: (taskId: number) =>
+      request<{ task: import('../types').Task; message?: string }>(
+        `/api/execution/tasks/${taskId}/run`,
+        { method: 'POST' }
+      ),
+    canRun: (taskId: number) =>
+      request<{ can_run: boolean; reason?: string; status?: string }>(
+        `/api/execution/tasks/${taskId}/can-run`
+      ),
+  },
+  budgets: {
+    companySummary: (id: number) =>
+      request<{ monthly_budget: number; current_month_spend: number; remaining: number }>(
+        `/api/budgets/company/${id}`
+      ),
   },
   health: () => request<{ status: string; app?: string; version?: string }>('/health'),
 }

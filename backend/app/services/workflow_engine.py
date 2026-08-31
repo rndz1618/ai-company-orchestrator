@@ -7,6 +7,7 @@ Rules (Board-approved):
 - Budget: pre-flight check before every provider call; record_spend after success.
 - Soft-deleted / paused agents cannot run.
 - Soft-deleted dependency blocks the chain with a clear error.
+- Every stage must have a role that matches an active agent (fail-fast).
 """
 
 from __future__ import annotations
@@ -191,7 +192,7 @@ def start_workflow(
 ) -> List[Task]:
     """
     Materialize WorkflowTemplate into sequential Tasks.
-    Requires an active agent matching each stage.role — fails fast if missing.
+    Every stage must have a non-empty role matching an active agent — fail-fast otherwise.
     """
     wf = (
         db.query(WorkflowTemplate)
@@ -224,33 +225,34 @@ def start_workflow(
             description = stage.get("description") or ""
         else:
             name = getattr(stage, "name", f"Stage {idx + 1}")
-            role = getattr(stage, "role", "")
+            role = getattr(stage, "role", "") or ""
             requires_approval = bool(getattr(stage, "requires_human_approval", False))
             description = getattr(stage, "description", "") or ""
 
-        agent = None
-        if role:
-            agent = (
-                db.query(Agent)
-                .filter(
-                    Agent.company_id == company_id,
-                    Agent.role == role,
-                    Agent.is_active == True,
-                )
-                .first()
+        if not role:
+            raise WorkflowEngineError(
+                f"Stage {idx} ('{name}'): role is required. "
+                f"Every stage must specify a role that matches an active agent."
             )
-            if not agent:
-                raise WorkflowEngineError(
-                    f"Stage {idx} ('{name}'): no active agent with role='{role}' "
-                    f"in company {company_id}. Hire/create agent first."
-                )
-        else:
-            logger.warning("Stage %s ('%s') has no role – task will have no agent", idx, name)
+        agent = (
+            db.query(Agent)
+            .filter(
+                Agent.company_id == company_id,
+                Agent.role == role,
+                Agent.is_active == True,
+            )
+            .first()
+        )
+        if not agent:
+            raise WorkflowEngineError(
+                f"Stage {idx} ('{name}'): no active agent with role='{role}' "
+                f"in company {company_id}. Hire/create agent first."
+            )
 
         title = f"{title_prefix + ' — ' if title_prefix else ''}{name}"
         task = Task(
             company_id=company_id,
-            agent_id=agent.id if agent else None,
+            agent_id=agent.id,
             title=title,
             description=description or f"Stage: {name} (role={role})",
             status=TaskStatus.PENDING if prev_task_id else TaskStatus.READY,

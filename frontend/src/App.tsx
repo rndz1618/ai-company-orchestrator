@@ -4,6 +4,7 @@ import Dashboard from './pages/Dashboard'
 import Companies from './pages/Companies'
 import Agents from './pages/Agents'
 import Tasks from './pages/Tasks'
+import TaskDetail from './pages/TaskDetail'
 import Budgets from './pages/Budgets'
 
 export default function App() {
@@ -15,6 +16,7 @@ export default function App() {
           <Route path="companies" element={<Companies />} />
           <Route path="agents" element={<Agents />} />
           <Route path="tasks" element={<Tasks />} />
+          <Route path="tasks/:taskId" element={<TaskDetail />} />
           <Route path="budgets" element={<Budgets />} />
         </Route>
       </Routes>

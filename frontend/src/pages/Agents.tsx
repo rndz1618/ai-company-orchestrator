@@ -27,17 +27,20 @@ const emptyForm = (companyId: number): AgentCreate => ({
 export default function Agents() {
   const [items, setItems] = useState<Agent[]>([])
   const [companies, setCompanies] = useState<Company[]>([])
+  const [filterCompany, setFilterCompany] = useState<number | 'all'>('all')
   const [error, setError] = useState<string | null>(null)
   const [loading, setLoading] = useState(true)
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<Agent | null>(null)
   const [form, setForm] = useState<AgentCreate>(emptyForm(0))
   const [saving, setSaving] = useState(false)
+  const [togglingId, setTogglingId] = useState<number | null>(null)
 
   const load = () => {
     setLoading(true)
     setError(null)
-    Promise.all([api.agents.list(), api.companies.list()])
+    const companyArg = filterCompany === 'all' ? undefined : filterCompany
+    Promise.all([api.agents.list(companyArg), api.companies.list()])
       .then(([a, c]) => {
         setItems(a)
         setCompanies(c)
@@ -48,11 +51,15 @@ export default function Agents() {
 
   useEffect(() => {
     load()
-  }, [])
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [filterCompany])
 
   const openCreate = () => {
     setEditing(null)
-    const cid = companies[0]?.id ?? 0
+    const cid =
+      filterCompany !== 'all'
+        ? filterCompany
+        : companies[0]?.id ?? 0
     setForm(emptyForm(cid))
     setModalOpen(true)
   }
@@ -121,6 +128,15 @@ export default function Agents() {
   }
 
   const togglePause = async (a: Agent) => {
+    if (togglingId != null) return
+    if (a.status === 'paused_budget') {
+      setError(
+        `"${a.name}" is paused because budget is exhausted. Increase monthly budget, then resume.`
+      )
+      return
+    }
+    setTogglingId(a.id)
+    setError(null)
     try {
       if (a.status === 'active') {
         await api.agents.pause(a.id)
@@ -130,6 +146,8 @@ export default function Agents() {
       await load()
     } catch (err: unknown) {
       setError(err instanceof Error ? err.message : String(err))
+    } finally {
+      setTogglingId(null)
     }
   }
 
@@ -137,12 +155,30 @@ export default function Agents() {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-start justify-between gap-3">
+      <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
         <div>
           <h2 className="text-xl font-semibold">Agents</h2>
           <p className="text-sm text-muted">Roles, providers, and spend caps</p>
         </div>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
+          {companies.length > 0 && (
+            <select
+              value={filterCompany}
+              onChange={(e) =>
+                setFilterCompany(
+                  e.target.value === 'all' ? 'all' : Number(e.target.value)
+                )
+              }
+              className="min-h-[44px] rounded-lg border border-border bg-surface-2 px-3 text-sm"
+            >
+              <option value="all">All companies</option>
+              {companies.map((c) => (
+                <option key={c.id} value={c.id}>
+                  {c.name}
+                </option>
+              ))}
+            </select>
+          )}
           <button
             type="button"
             onClick={load}
@@ -163,7 +199,11 @@ export default function Agents() {
       {companies.length === 0 && !loading && (
         <p className="text-sm text-warning">Create a company first before hiring agents.</p>
       )}
-      {error && <p className="text-sm text-danger">{error}</p>}
+      {error && (
+        <div className="rounded-lg border border-danger/40 bg-danger/10 px-3 py-2 text-sm text-danger">
+          {error}
+        </div>
+      )}
       {loading && <p className="text-sm text-muted">Loading…</p>}
       {!loading && (
         <div className="rounded-xl border border-border bg-surface-2 divide-y divide-border overflow-hidden">
@@ -177,6 +217,9 @@ export default function Agents() {
                 <p className="text-xs text-muted">
                   {a.role} · {a.provider}/{a.model} · {companyName(a.company_id)}
                 </p>
+                {a.description && (
+                  <p className="text-xs text-muted mt-0.5 line-clamp-1">{a.description}</p>
+                )}
                 <p className="text-xs tabular-nums text-muted mt-0.5">
                   ${a.current_month_spend.toFixed(2)} / ${a.monthly_budget.toFixed(0)}
                 </p>
@@ -191,11 +234,27 @@ export default function Agents() {
                 </span>
                 <button
                   type="button"
-                  aria-label={a.status === 'active' ? 'Pause agent' : 'Resume agent'}
+                  aria-label={
+                    a.status === 'paused_budget'
+                      ? 'Budget exhausted — increase budget first'
+                      : a.status === 'active'
+                        ? 'Pause agent'
+                        : 'Resume agent'
+                  }
+                  disabled={togglingId === a.id || a.status === 'paused_budget'}
+                  title={
+                    a.status === 'paused_budget'
+                      ? 'Increase budget first'
+                      : undefined
+                  }
                   onClick={() => togglePause(a)}
-                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-surface-3 text-muted"
+                  className="min-h-[44px] min-w-[44px] flex items-center justify-center rounded-lg hover:bg-surface-3 text-muted disabled:opacity-40"
                 >
-                  {a.status === 'active' ? <Pause size={16} /> : <Play size={16} />}
+                  {togglingId === a.id
+                    ? '…'
+                    : a.status === 'active'
+                      ? <Pause size={16} />
+                      : <Play size={16} />}
                 </button>
                 <button
                   type="button"
@@ -265,6 +324,15 @@ export default function Agents() {
               value={form.role}
               onChange={(e) => setForm({ ...form, role: e.target.value })}
               placeholder="e.g. Researcher"
+              className="w-full min-h-[44px] rounded-lg border border-border bg-surface px-3 text-sm"
+            />
+          </label>
+          <label className="block space-y-1">
+            <span className="text-xs text-muted">Description</span>
+            <input
+              value={form.description || ''}
+              onChange={(e) => setForm({ ...form, description: e.target.value })}
+              placeholder="Short role summary"
               className="w-full min-h-[44px] rounded-lg border border-border bg-surface px-3 text-sm"
             />
           </label>

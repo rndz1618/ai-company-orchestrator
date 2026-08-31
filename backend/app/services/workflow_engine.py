@@ -13,6 +13,7 @@ Rules (Board-approved):
 from __future__ import annotations
 
 import logging
+from datetime import timedelta
 from typing import Optional, List
 
 from sqlalchemy.orm import Session
@@ -301,3 +302,46 @@ def advance_ready_tasks(company_id: int, db: Session) -> List[Task]:
             logger.warning("advance skipped task %s: %s", task.id, e)
             continue
     return executed
+
+
+def recover_stuck_running(
+    db: Session,
+    *,
+    older_than_minutes: Optional[int] = None,
+    company_id: Optional[int] = None,
+) -> List[Task]:
+    """
+    Mark tasks stuck in RUNNING longer than threshold as FAILED.
+    Prevents permanent lock when process crashed mid-provider-call.
+    """
+    from app.core.config import settings
+
+    minutes = older_than_minutes if older_than_minutes is not None else settings.STUCK_RUNNING_MINUTES
+    cutoff = utcnow() - timedelta(minutes=minutes)
+
+    q = db.query(Task).filter(
+        Task.is_active == True,
+        Task.status == TaskStatus.RUNNING,
+        Task.started_at != None,
+        Task.started_at < cutoff,
+    )
+    if company_id is not None:
+        q = q.filter(Task.company_id == company_id)
+
+    stuck = q.all()
+    recovered = []
+    for task in stuck:
+        task.status = TaskStatus.FAILED
+        task.error_message = (
+            f"Recovered: stuck in RUNNING since {task.started_at.isoformat()} "
+            f"(threshold {minutes}m). Safe to re-run."
+        )
+        db.add(task)
+        recovered.append(task)
+        logger.warning("Recovered stuck task %s (started %s)", task.id, task.started_at)
+
+    if recovered:
+        db.commit()
+        for t in recovered:
+            db.refresh(t)
+    return recovered

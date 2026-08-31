@@ -7,8 +7,9 @@ import {
   Wallet,
   Menu,
   X,
+  KeyRound,
 } from 'lucide-react'
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 
 const nav = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
@@ -20,6 +21,23 @@ const nav = [
 
 export default function Layout() {
   const [open, setOpen] = useState(false)
+  const [showKey, setShowKey] = useState(false)
+  const [apiKey, setApiKey] = useState('')
+  const [saved, setSaved] = useState(false)
+
+  useEffect(() => {
+    setApiKey(localStorage.getItem('orchestrator_api_key') || '')
+  }, [])
+
+  const saveKey = () => {
+    if (apiKey.trim()) {
+      localStorage.setItem('orchestrator_api_key', apiKey.trim())
+    } else {
+      localStorage.removeItem('orchestrator_api_key')
+    }
+    setSaved(true)
+    setTimeout(() => setSaved(false), 1500)
+  }
 
   return (
     <div className="min-h-full flex flex-col md:flex-row bg-surface text-text">
@@ -47,6 +65,34 @@ export default function Layout() {
             </NavLink>
           ))}
         </nav>
+        <div className="p-3 border-t border-border">
+          <button
+            type="button"
+            onClick={() => setShowKey((v) => !v)}
+            className="flex items-center gap-2 text-xs text-muted hover:text-text min-h-[44px] w-full px-2"
+          >
+            <KeyRound size={16} />
+            API Key
+          </button>
+          {showKey && (
+            <div className="mt-2 space-y-2">
+              <input
+                type="password"
+                value={apiKey}
+                onChange={(e) => setApiKey(e.target.value)}
+                placeholder="X-API-Key (optional)"
+                className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-xs"
+              />
+              <button
+                type="button"
+                onClick={saveKey}
+                className="w-full min-h-[36px] rounded-lg bg-accent/20 text-accent text-xs font-medium"
+              >
+                {saved ? 'Saved' : 'Save'}
+              </button>
+            </div>
+          )}
+        </div>
       </aside>
 
       <header className="md:hidden sticky top-0 z-20 flex items-center justify-between border-b border-border bg-surface-2 px-4 py-3">
@@ -82,6 +128,25 @@ export default function Layout() {
               {label}
             </NavLink>
           ))}
+          <div className="px-3 py-2 space-y-2 border-t border-border mt-2 pt-2">
+            <p className="text-xs text-muted flex items-center gap-2">
+              <KeyRound size={14} /> API Key
+            </p>
+            <input
+              type="password"
+              value={apiKey}
+              onChange={(e) => setApiKey(e.target.value)}
+              placeholder="X-API-Key (optional)"
+              className="w-full rounded-lg border border-border bg-surface px-2 py-2 text-xs"
+            />
+            <button
+              type="button"
+              onClick={saveKey}
+              className="w-full min-h-[36px] rounded-lg bg-accent/20 text-accent text-xs font-medium"
+            >
+              {saved ? 'Saved' : 'Save'}
+            </button>
+          </div>
         </div>
       )}
 

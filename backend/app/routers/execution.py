@@ -1,4 +1,4 @@
-"""Phase 2 – execution endpoints (run task, start workflow, advance)."""
+"""Phase 2 – execution endpoints (run task, start workflow, advance, recover)."""
 
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
@@ -13,6 +13,7 @@ from app.services.workflow_engine import (
     start_workflow,
     advance_ready_tasks,
     can_run_task,
+    recover_stuck_running,
     TaskNotRunnable,
     WorkflowEngineError,
 )
@@ -95,3 +96,21 @@ def api_advance(company_id: int, db: Session = Depends(get_db)):
     except WorkflowEngineError as e:
         raise HTTPException(status_code=502, detail=str(e))
     return executed
+
+
+@router.post("/recover-stuck", response_model=List[TaskOut])
+def api_recover_stuck(
+    company_id: int | None = None,
+    older_than_minutes: int | None = None,
+    db: Session = Depends(get_db),
+):
+    """
+    Mark tasks stuck in RUNNING past the threshold as FAILED.
+    Default threshold: settings.STUCK_RUNNING_MINUTES (30).
+    """
+    recovered = recover_stuck_running(
+        db,
+        older_than_minutes=older_than_minutes,
+        company_id=company_id,
+    )
+    return recovered

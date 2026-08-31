@@ -16,8 +16,8 @@ def utcnow() -> datetime:
 
 class AgentStatus(str, Enum):
     ACTIVE = "active"
-    PAUSED_BUDGET = "paused_budget"   # auto-paused because budget exhausted
-    PAUSED_MANUAL = "paused_manual"   # Board intentionally paused the agent
+    PAUSED_BUDGET = "paused_budget"
+    PAUSED_MANUAL = "paused_manual"
     DISABLED = "disabled"
 
 
@@ -34,6 +34,7 @@ class TaskStatus(str, Enum):
 class ProviderType(str, Enum):
     ANTHROPIC = "anthropic"
     OPENAI = "openai"
+    GROQ = "groq"
     OPENCLAW = "openclaw"
     LOCAL = "local"
     CUSTOM = "custom"

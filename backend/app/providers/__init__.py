@@ -8,6 +8,7 @@ from app.models import ProviderType, Agent
 from app.providers.base import ProviderAdapter
 from app.providers.claude import ClaudeAdapter
 from app.providers.openai_adapter import OpenAIAdapter
+from app.providers.groq_adapter import GroqAdapter
 from app.core.config import settings
 
 
@@ -27,6 +28,9 @@ def get_adapter(provider: ProviderType | str, api_key: Optional[str] = None) -> 
 
     if key == "openai":
         return OpenAIAdapter(api_key=api_key or settings.OPENAI_API_KEY)
+
+    if key == "groq":
+        return GroqAdapter(api_key=api_key or settings.GROQ_API_KEY)
 
     if key == "openclaw":
         raise ProviderNotSupported("OpenClaw adapter not yet implemented")

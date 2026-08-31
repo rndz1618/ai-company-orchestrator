@@ -32,6 +32,17 @@ class Settings(BaseSettings):
     # Leave empty for local open access (dev only)
     ORCHESTRATOR_API_KEY: Optional[str] = None
 
+    # Rate limiting (requests per window per client key/IP)
+    RATE_LIMIT_ENABLED: bool = True
+    RATE_LIMIT_REQUESTS: int = 60
+    RATE_LIMIT_WINDOW_SECONDS: int = 60
+    # Stricter limit for execution endpoints
+    RATE_LIMIT_EXECUTION_REQUESTS: int = 10
+    RATE_LIMIT_EXECUTION_WINDOW_SECONDS: int = 60
+
+    # Stuck RUNNING recovery: mark FAILED after this many minutes
+    STUCK_RUNNING_MINUTES: int = 30
+
     class Config:
         env_file = ".env"
         case_sensitive = True

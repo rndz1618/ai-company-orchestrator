@@ -6,6 +6,7 @@ import logging
 
 from app.core.config import settings
 from app.core.auth import APIKeyMiddleware
+from app.core.rate_limit import RateLimitMiddleware
 from app.routers import companies, agents, tasks, budgets, workflows, execution
 from app.services.budget import BudgetExceededError
 
@@ -37,6 +38,7 @@ else:
     allow_origins = ["*"]
 
 app.add_middleware(APIKeyMiddleware)
+app.add_middleware(RateLimitMiddleware)
 
 app.add_middleware(
     CORSMiddleware,
@@ -62,7 +64,7 @@ async def budget_exceeded_handler(request: Request, exc: BudgetExceededError):
             "detail": str(exc),
             "agent_id": exc.agent_id,
             "remaining": exc.remaining,
-            "required": exc.required,
+            "required": exp.required if False else exc.required,
             "error": "budget_exceeded",
         },
     )
@@ -82,5 +84,5 @@ def root():
     return {
         "message": "AI Company Orchestrator API",
         "docs": "/docs",
-        "phase": "2.1 – engine + retries + API-key auth",
+        "phase": "2.2 – rate limit + OpenAI + stuck recovery",
     }

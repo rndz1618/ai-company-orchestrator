@@ -1,11 +1,18 @@
-"""Anthropic Claude adapter with client cache + retries on rate-limit/5xx."""
+"""Anthropic Claude adapter with client cache + tenacity retries (jittered)."""
 
 from __future__ import annotations
 
 import logging
 import os
-import time
 from typing import Optional
+
+from tenacity import (
+    retry,
+    stop_after_attempt,
+    wait_exponential_jitter,
+    retry_if_exception,
+    before_sleep_log,
+)
 
 from app.providers.base import ProviderAdapter, ProviderResponse
 from app.services.budget import estimate_cost
@@ -21,7 +28,7 @@ def _is_retryable_anthropic(exc: BaseException) -> bool:
         import anthropic
         if isinstance(exc, anthropic.RateLimitError):
             return True
-        if isinstance(exc, anthropic.APIStatusError) and exc.status_code >= 500:
+        if isinstance(exc, anthropic.APIStatusError) and getattr(exc, "status_code", 0) >= 500:
             return True
         if isinstance(exc, anthropic.APIConnectionError):
             return True
@@ -57,8 +64,8 @@ class ClaudeAdapter(ProviderAdapter):
     def estimate_tokens(self, text: str) -> int:
         """
         Approximate token count for pre-flight budget.
-        Uses OpenAI cl100k_base as a cross-model heuristic — Claude
-        tokenization differs; mild overestimate is safer for budget checks.
+        Uses OpenAI cl100k_base as a cross-model heuristic —
+        Claude tokenization differs; mild overestimate is safer for budget checks.
         """
         try:
             import tiktoken
@@ -66,6 +73,31 @@ class ClaudeAdapter(ProviderAdapter):
             return len(enc.encode(text))
         except Exception:
             return super().estimate_tokens(text)
+
+    @retry(
+        retry=retry_if_exception(_is_retryable_anthropic),
+        stop=stop_after_attempt(4),
+        wait=wait_exponential_jitter(initial=1, max=30, jitter=1),
+        before_sleep=before_sleep_log(logger, logging.WARNING),
+        reraise=True,
+    )
+    def _call_api(
+        self,
+        *,
+        system: str,
+        user: str,
+        model: str,
+        max_tokens: int,
+        temperature: float,
+    ):
+        client = self._get_client()
+        return client.messages.create(
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+            system=system or "You are a helpful assistant.",
+            messages=[{"role": "user", "content": user}],
+        )
 
     def complete(
         self,
@@ -76,31 +108,13 @@ class ClaudeAdapter(ProviderAdapter):
         max_tokens: int = 4096,
         temperature: float = 0.3,
     ) -> ProviderResponse:
-        last_exc: Optional[Exception] = None
-        resp = None
-        for attempt in range(1, 5):
-            try:
-                client = self._get_client()
-                resp = client.messages.create(
-                    model=model,
-                    max_tokens=max_tokens,
-                    temperature=temperature,
-                    system=system or "You are a helpful assistant.",
-                    messages=[{"role": "user", "content": user}],
-                )
-                break
-            except Exception as e:
-                last_exc = e
-                if not _is_retryable_anthropic(e) or attempt == 4:
-                    raise
-                wait_s = min(30, 2 ** (attempt - 1))
-                logger.warning(
-                    "Claude API retryable error (attempt %s/4, wait %ss): %s",
-                    attempt, wait_s, e,
-                )
-                time.sleep(wait_s)
-        else:
-            raise last_exc  # type: ignore
+        resp = self._call_api(
+            system=system,
+            user=user,
+            model=model,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
 
         content_parts = []
         for block in resp.content:

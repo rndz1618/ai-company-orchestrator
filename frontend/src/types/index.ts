@@ -62,3 +62,20 @@ export interface Task {
   started_at?: string | null
   completed_at?: string | null
 }
+
+export interface WorkflowStage {
+  name: string
+  role: string
+  requires_human_approval?: boolean
+  description?: string | null
+}
+
+export interface WorkflowTemplate {
+  id: number
+  company_id: number
+  name: string
+  description?: string | null
+  stages: WorkflowStage[]
+  created_at: string
+  updated_at: string
+}

@@ -64,7 +64,7 @@ async def budget_exceeded_handler(request: Request, exc: BudgetExceededError):
             "detail": str(exc),
             "agent_id": exc.agent_id,
             "remaining": exc.remaining,
-            "required": exp.required if False else exc.required,
+            "required": exc.required,
             "error": "budget_exceeded",
         },
     )

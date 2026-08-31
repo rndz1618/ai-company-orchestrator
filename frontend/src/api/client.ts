@@ -137,5 +137,30 @@ export const api = {
         `/api/budgets/company/${id}`
       ),
   },
+  workflows: {
+    list: (companyId?: number) =>
+      request<import('../types').WorkflowTemplate[]>(
+        companyId ? `/api/workflows/?company_id=${companyId}` : '/api/workflows/'
+      ),
+    get: (id: number) =>
+      request<import('../types').WorkflowTemplate>(`/api/workflows/${id}`),
+    create: (body: {
+      company_id: number
+      name: string
+      description?: string | null
+      stages: import('../types').WorkflowStage[]
+    }) =>
+      request<import('../types').WorkflowTemplate>('/api/workflows/', {
+        method: 'POST',
+        body: JSON.stringify(body),
+      }),
+    remove: (id: number) =>
+      request<void>(`/api/workflows/${id}`, { method: 'DELETE' }),
+    start: (workflowId: number, companyId: number, title_prefix?: string) =>
+      request<import('../types').Task[]>(`/api/execution/workflows/${workflowId}/start`, {
+        method: 'POST',
+        body: JSON.stringify({ company_id: companyId, title_prefix: title_prefix || null }),
+      }),
+  },
   health: () => request<{ status: string; app?: string; version?: string }>('/health'),
 }

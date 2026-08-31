@@ -15,38 +15,38 @@ Central dashboard and control plane for managing a team of AI agents as a virtua
 | 2.1–2.2 | Auth, rate limit, OpenAI/Groq, stuck recovery | ✅ Done |
 | 3 | React dashboard: CRUD, HITL, Org, Workflows UI | ✅ Done (9.5) |
 | — | Manual local test | See [MANUAL_TEST.md](./MANUAL_TEST.md) |
+| — | Docker Compose stack | ✅ `docker compose up --build` |
 | 4 | Async worker / background execution | Pending |
 
-## Phase 1 Deliverables
+## Quick Start — Docker (recommended)
 
-- FastAPI backend skeleton
-- SQLAlchemy models: Company, Agent, WorkflowTemplate, Task, SpendLog
-- Hard budget enforcement service (per-agent + company level)
-- Automatic monthly budget reset
-- Auto-pause agent when budget exhausted
-- Pre-flight cost estimation
-- Immutable spend logging
-- Basic CRUD routers for companies, agents, tasks, budgets
-- Configurable Human-in-the-Loop (per task / stage)
+```bash
+cp .env.example .env   # optional: GROQ_API_KEY=...
+docker compose up --build
+```
 
-## Quick Start (Phase 1)
+| Service | URL |
+|---------|-----|
+| **UI** | http://localhost:8080 |
+| **API docs** | http://localhost:8000/docs |
+| Postgres | `localhost:5432` (user/pass/db: `orchestrator`) |
+
+Stop: `docker compose down` · Wipe DB: `docker compose down -v`
+
+## Quick Start — local (no Docker)
 
 ```bash
 cd backend
-python -m venv .venv
-source .venv/bin/activate   # or .venv\Scripts\activate on Windows
-
-# Phase 1 only
-pip install -r requirements-base.txt
-
-# or full (Phase 1 + Phase 2 deps)
+python -m venv .venv && source .venv/bin/activate
 pip install -r requirements.txt
-
-# Apply migrations
+cp .env.example .env   # or set GROQ_API_KEY
 alembic upgrade head
-
-# Run API
 uvicorn app.main:app --reload --host 0.0.0.0 --port 8000
+```
+
+```bash
+cd frontend && npm install && npm run dev
+# → http://localhost:5173 (proxies /api → :8000)
 ```
 
 Open http://localhost:8000/docs for interactive API docs.
@@ -56,40 +56,22 @@ Open http://localhost:8000/docs for interactive API docs.
 - `requirements-phase2.txt` — Phase 2 (provider SDKs: anthropic, openai, tiktoken, tenacity)
 - `requirements.txt` — convenience full install
 
-### Alembic
-- Environment: `alembic/`
-- First migration: `alembic/versions/8d5da4fc0b82_initial_schema_phase1.py`
-- Commands: `alembic revision --autogenerate -m "msg"` / `alembic upgrade head`
-
 ## Key Design Decisions (Board-approved)
 
 1. **HITL is declarative** – Board decides per workflow/stage whether approval is required. Fully automatic pipelines are first-class.
 2. **Sequential always enforced** – Tasks respect `depends_on_id`. No jumping stages.
 3. **Budget is hard** – Every provider call is checked before execution. Exceed → agent auto-paused.
-4. **Provider-agnostic** – Clean adapter interface (Claude, OpenAI, OpenClaw, local, custom).
+4. **Provider-agnostic** – Clean adapter interface (Claude, OpenAI, Groq, OpenClaw, local, custom).
 5. **Mobile-first UI** (Phase 3) – Dashboard usable from phone.
 
-## Phase 3 (done)
+## Manual test
 
-React + Tailwind mobile-first dashboard:
-- Overview, Companies, Agents, Tasks, Budgets, Org, Workflows
-- Proxy to FastAPI (`/api`)
-- Bottom nav (mobile) + sidebar (desktop)
+Board checklist (UI + curl): **[MANUAL_TEST.md](./MANUAL_TEST.md)**.
 
-```bash
-cd frontend && npm install && npm run dev
-# API: uvicorn on :8000
-```
+1. Company → hire agents (roles = workflow stages) → **Flows** → Start
+2. **Tasks** → Advance / Run → Approve HITL if needed
 
-## Manual test (local)
-
-Step-by-step Board checklist (UI + curl smoke): **[MANUAL_TEST.md](./MANUAL_TEST.md)**.
-
-1. Start API (`uvicorn` :8000) + UI (`npm run dev` :5173)
-2. Company → hire agents (roles match workflow stages) → **Flows** → Start
-3. **Tasks** → Advance / Run → Approve HITL if needed
-
-Optional free LLM: set `GROQ_API_KEY` in `backend/.env`.
+Optional free LLM: `GROQ_API_KEY` in `.env`.
 
 ## Notion Project Hub
 

@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { api } from '../api/client'
 import type { Task, Company } from '../types'
 
@@ -102,7 +103,12 @@ export default function Tasks() {
           {filtered.map((t) => (
             <div key={t.id} className="px-4 py-3 space-y-1">
               <div className="flex items-start justify-between gap-2">
-                <p className="text-sm font-medium">{t.title}</p>
+                <Link
+                  to={`/tasks/${t.id}`}
+                  className="text-sm font-medium hover:text-accent min-h-[44px] flex items-center"
+                >
+                  {t.title}
+                </Link>
                 <span className={`text-xs font-medium shrink-0 ${statusStyle[t.status]}`}>
                   {t.status.replace(/_/g, ' ')}
                 </span>

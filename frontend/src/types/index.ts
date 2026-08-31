@@ -47,13 +47,17 @@ export interface Task {
   status: TaskStatus
   depends_on_id?: number | null
   requires_human_approval: boolean
+  approved_by?: string | null
+  approved_at?: string | null
   result?: string | null
   error_message?: string | null
   estimated_cost?: number | null
   actual_cost?: number | null
+  tokens_input?: number | null
+  tokens_output?: number | null
   stage_index?: number | null
   workflow_template_id?: number | null
-  is_active: boolean
+  is_active?: boolean
   created_at: string
   started_at?: string | null
   completed_at?: string | null

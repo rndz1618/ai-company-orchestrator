@@ -7,6 +7,7 @@ import Tasks from './pages/Tasks'
 import TaskDetail from './pages/TaskDetail'
 import Budgets from './pages/Budgets'
 import OrgChart from './pages/OrgChart'
+import Workflows from './pages/Workflows'
 
 export default function App() {
   return (
@@ -17,6 +18,7 @@ export default function App() {
           <Route path="companies" element={<Companies />} />
           <Route path="agents" element={<Agents />} />
           <Route path="org" element={<OrgChart />} />
+          <Route path="workflows" element={<Workflows />} />
           <Route path="tasks" element={<Tasks />} />
           <Route path="tasks/:taskId" element={<TaskDetail />} />
           <Route path="budgets" element={<Budgets />} />

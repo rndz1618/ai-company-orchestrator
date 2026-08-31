@@ -5,6 +5,7 @@ import {
   Bot,
   ListTodo,
   Wallet,
+  Network,
   Menu,
   X,
   KeyRound,
@@ -15,6 +16,7 @@ const nav = [
   { to: '/', label: 'Overview', icon: LayoutDashboard },
   { to: '/companies', label: 'Companies', icon: Building2 },
   { to: '/agents', label: 'Agents', icon: Bot },
+  { to: '/org', label: 'Org', icon: Network },
   { to: '/tasks', label: 'Tasks', icon: ListTodo },
   { to: '/budgets', label: 'Budgets', icon: Wallet },
 ]
@@ -164,12 +166,12 @@ export default function Layout() {
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2 px-2 min-w-[56px] min-h-[52px] text-[10px] ${
+                `flex flex-col items-center gap-0.5 py-2 px-1 min-w-[48px] min-h-[52px] text-[10px] ${
                   isActive ? 'text-accent' : 'text-muted'
                 }`
               }
             >
-              <Icon size={20} strokeWidth={1.75} />
+              <Icon size={18} strokeWidth={1.75} />
               <span>{label}</span>
             </NavLink>
           ))}

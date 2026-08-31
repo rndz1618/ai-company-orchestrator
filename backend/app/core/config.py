@@ -27,6 +27,7 @@ class Settings(BaseSettings):
     # Provider keys (loaded from env)
     ANTHROPIC_API_KEY: Optional[str] = None
     OPENAI_API_KEY: Optional[str] = None
+    GROQ_API_KEY: Optional[str] = None
 
     # Auth – if set, all /api/* routes require header X-API-Key
     # Leave empty for local open access (dev only)

@@ -23,6 +23,15 @@ const nav = [
   { to: '/budgets', label: 'Budgets', icon: Wallet },
 ]
 
+/** Primary tabs for mobile bottom bar (avoid 7-item squeeze) */
+const bottomNav = [
+  { to: '/', label: 'Home', icon: LayoutDashboard },
+  { to: '/agents', label: 'Agents', icon: Bot },
+  { to: '/workflows', label: 'Flows', icon: GitBranch },
+  { to: '/tasks', label: 'Tasks', icon: ListTodo },
+  { to: '/budgets', label: 'Budgets', icon: Wallet },
+]
+
 export default function Layout() {
   const [open, setOpen] = useState(false)
   const [showKey, setShowKey] = useState(false)
@@ -162,18 +171,18 @@ export default function Layout() {
 
       <nav className="md:hidden fixed bottom-0 inset-x-0 z-20 border-t border-border bg-surface-2 pb-safe">
         <div className="flex justify-around">
-          {nav.map(({ to, label, icon: Icon }) => (
+          {bottomNav.map(({ to, label, icon: Icon }) => (
             <NavLink
               key={to}
               to={to}
               end={to === '/'}
               className={({ isActive }) =>
-                `flex flex-col items-center gap-0.5 py-2 px-1 min-w-[44px] min-h-[52px] text-[9px] ${
+                `flex flex-col items-center gap-0.5 py-2 px-2 min-w-[56px] min-h-[52px] text-[10px] ${
                   isActive ? 'text-accent' : 'text-muted'
                 }`
               }
             >
-              <Icon size={18} strokeWidth={1.75} />
+              <Icon size={20} strokeWidth={1.75} />
               <span>{label}</span>
             </NavLink>
           ))}
